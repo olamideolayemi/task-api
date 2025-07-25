@@ -4,3 +4,7 @@
 node_modules
 bin/
 tmp/
+
+Dockerfile
+.dockerignore
+docker.env
