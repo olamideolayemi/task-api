@@ -1,0 +1,6 @@
+.env 
+*.log
+*.md
+node_modules
+bin/
+tmp/

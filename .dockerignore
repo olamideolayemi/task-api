@@ -1,0 +1,7 @@
+# Avoid copying these into the container
+.env
+*.log
+*.md
+node_modules
+bin/
+tmp/
