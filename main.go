@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 
+	gorillaHandlers "github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	httpSwagger "github.com/swaggo/http-swagger"
 	"task-api/db"
@@ -39,17 +40,28 @@ func main() {
 
 	r := mux.NewRouter()
 
+	r.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
+
 	r.HandleFunc("/", homeHandler)
+
+	// auth handlers
 	r.HandleFunc("/login", handlers.Login).Methods("POST")
 
+	// tasks handlers
 	r.HandleFunc("/tasks", taskHandler)
-
 	r.HandleFunc("/tasks/{id}", handlers.GetTaskByID).Methods("GET")
 	r.HandleFunc("/tasks/{id}", middlewares.RequireAuth(handlers.UpdateTask)).Methods("PUT")
 	r.HandleFunc("/tasks/{id}", middlewares.RequireAuth(handlers.DeleteTask)).Methods("DELETE")
 
-	fmt.Println("Server starting at http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	// File upload handler
+	r.HandleFunc("/upload", middlewares.RequireAuth(handlers.UploadImage)).Methods("POST")
 
-	r.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
+	// CORS config
+	headersOk := gorillaHandlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})
+	originsOk := gorillaHandlers.AllowedOrigins([]string{"*"})
+	methodsOk := gorillaHandlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"})
+
+	fmt.Println("Server starting at http://localhost:8080")
+	log.Fatal(http.ListenAndServe(":8000", gorillaHandlers.CORS(originsOk, headersOk, methodsOk)(r)))
+
 }
