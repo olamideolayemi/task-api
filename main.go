@@ -47,6 +47,7 @@ func main() {
 
 	// auth handlers
 	r.HandleFunc("/login", handlers.Login).Methods("POST")
+	r.HandleFunc("/sign-up", handlers.Signup).Methods("POST")
 
 	// tasks handlers
 	r.HandleFunc("/tasks", taskHandler)
