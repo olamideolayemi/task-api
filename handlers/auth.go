@@ -92,7 +92,7 @@ func Signup(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("Signup error: %v", err)
-		http.Error(w, "User creation failed", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 

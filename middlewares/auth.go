@@ -83,7 +83,7 @@ func GetUserRole(r *http.Request) string {
 func RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if GetUserRole(r) != "admin" {
-			http.Error(w, "Admins only", http.StatusForbidden)
+			http.Error(w, "You are unauthourized to view this. Admins only", http.StatusForbidden)
 			return
 		}
 		next(w, r)
