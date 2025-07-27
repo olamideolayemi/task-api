@@ -108,7 +108,12 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		fmt.Printf("Cloudinary Upload Response: %+v\n", uploadResp)
+
 		imageURL = uploadResp.SecureURL
+
+		fmt.Println("Final image URL:", imageURL)
+
 	}
 
 	userID := middlewares.GetUserID(r)
