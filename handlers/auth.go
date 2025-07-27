@@ -3,51 +3,55 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"strings"
-	"task-api/db"
-	"task-api/models"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	// "github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+
+	"task-api/db"
+	"task-api/models"
 )
 
 type AuthRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
 	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 func Login(w http.ResponseWriter, r *http.Request) {
 	var req AuthRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
 
 	var user models.User
-	var role string
-	err := db.Pool.QueryRow(context.Background(),
-		"SELECT id, password, role FROM users WHERE email=$1", req.Email,
-	).Scan(&user.ID, &user.Password, &role)
+	err := db.Pool.QueryRow(
+		context.Background(),
+		"SELECT id, password, role FROM users WHERE email=$1",
+		req.Email,
+	).Scan(&user.ID, &user.Password, &user.Role)
 
 	if err != nil {
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password))
-	if err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
-	// generate JWT
+	// 🔐 Generate JWT with UUID as string
 	secret := os.Getenv("JWT_SECRET")
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"username": req.Username,
-		"user_id":  user.ID,
-		"role":     role,
-		"exp":      time.Now().Add(24 * time.Hour).Unix(),
+		"user_id": user.ID.String(),
+		"role":    user.Role,
+		"exp":     time.Now().Add(24 * time.Hour).Unix(),
 	})
 
 	tokenString, err := token.SignedString([]byte(secret))
@@ -61,29 +65,33 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 func Signup(w http.ResponseWriter, r *http.Request) {
 	var user models.User
-	_ = json.NewDecoder(r.Body).Decode(&user)
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
 
 	user.Name = strings.TrimSpace(user.Name)
 	user.Email = strings.TrimSpace(user.Email)
 	if user.Name == "" || user.Email == "" || user.Password == "" {
-		http.Error(w, "All fields required", http.StatusBadRequest)
+		http.Error(w, "All fields are required", http.StatusBadRequest)
 		return
 	}
 
-	// Hash password
 	hashed, err := bcrypt.GenerateFromPassword([]byte(user.Password), 14)
 	if err != nil {
 		http.Error(w, "Error hashing password", http.StatusInternalServerError)
 		return
 	}
 
+	// INSERT with UUID
 	err = db.Pool.QueryRow(
 		context.Background(),
-		`INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id`,
+		`INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id, role`,
 		user.Name, user.Email, string(hashed),
-	).Scan(&user.ID)
+	).Scan(&user.ID, &user.Role)
 
 	if err != nil {
+		log.Printf("Signup error: %v", err)
 		http.Error(w, "User creation failed", http.StatusInternalServerError)
 		return
 	}

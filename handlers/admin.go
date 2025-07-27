@@ -9,6 +9,7 @@ import (
 	"task-api/db"
 	"task-api/models"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
 
@@ -49,13 +50,13 @@ func GetAllTasksWithUsers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type TaskWithUser struct {
-		ID       int    `json:"id"`
-		Title    string `json:"title"`
-		Details  string `json:"details"`
-		Done     bool   `json:"done"`
-		ImageURL string `json:"image_url"`
-		UserID   int    `json:"user_id"`
-		Email    string `json:"email"`
+		ID       uuid.UUID `json:"id"`
+		Title    string    `json:"title"`
+		Details  string    `json:"details"`
+		Done     bool      `json:"done"`
+		ImageURL string    `json:"image_url"`
+		UserID   uuid.UUID `json:"user_id"`
+		Email    string    `json:"email"`
 	}
 
 	var result []TaskWithUser

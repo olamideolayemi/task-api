@@ -17,6 +17,7 @@ import (
 
 	"github.com/cloudinary/cloudinary-go/v2"
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -272,7 +273,7 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(params["id"])
 
 	if role != "admin" {
-		var ownerID int
+		var ownerID uuid.UUID
 		err := db.Pool.QueryRow(context.Background(),
 			"SELECT user_id FROM tasks WHERE id=$1", id,
 		).Scan(&ownerID)

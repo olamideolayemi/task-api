@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 type contextKey string
@@ -42,15 +43,21 @@ func RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		userIDFloat, ok := claims["user_id"].(float64)
+		userIDStr, ok := claims["user_id"].(string)
 		if !ok {
 			http.Error(w, "User ID not found in token", http.StatusUnauthorized)
 			return
 		}
-		userID := int(userIDFloat)
+
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			http.Error(w, "Invalid user ID format", http.StatusUnauthorized)
+			return
+		}
+
 		role := claims["role"].(string)
 
-		// Pass userID via context
+		// Store UUID and role in context
 		ctx := context.WithValue(r.Context(), userKey, userID)
 		ctx = context.WithValue(ctx, roleKey, role)
 
@@ -58,12 +65,12 @@ func RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// Helper to retrieve user ID in handler
-func GetUserID(r *http.Request) int {
-	if userID, ok := r.Context().Value(userKey).(int); ok {
+// ✅ UUID-based
+func GetUserID(r *http.Request) uuid.UUID {
+	if userID, ok := r.Context().Value(userKey).(uuid.UUID); ok {
 		return userID
 	}
-	return 0
+	return uuid.Nil
 }
 
 func GetUserRole(r *http.Request) string {
@@ -73,11 +80,9 @@ func GetUserRole(r *http.Request) string {
 	return ""
 }
 
-// prevent non-admins from accessing certain routes
 func RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		role := GetUserRole(r)
-		if role != "admin" {
+		if GetUserRole(r) != "admin" {
 			http.Error(w, "Admins only", http.StatusForbidden)
 			return
 		}
