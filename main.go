@@ -52,7 +52,7 @@ func main() {
 	r.HandleFunc("/tasks", taskHandler)
 	r.HandleFunc("/tasks/{id}", handlers.GetTaskByID).Methods("GET")
 	r.HandleFunc("/tasks/{id}", middlewares.RequireAuth(handlers.UpdateTask)).Methods("PUT")
-	r.HandleFunc("/tasks/{id}", middlewares.RequireAuth(handlers.DeleteTask)).Methods("DELETE")
+	r.HandleFunc("/tasks/{id}", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.DeleteTask))).Methods("DELETE")
 
 	// File upload handler
 	r.HandleFunc("/upload", middlewares.RequireAuth(handlers.UploadImage)).Methods("POST")
@@ -60,7 +60,7 @@ func main() {
 
 	// CORS config
 	headersOk := gorillaHandlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})
-	originsOk := gorillaHandlers.AllowedOrigins([]string{"*"})
+	originsOk := gorillaHandlers.AllowedOrigins([]string{"3000"})
 	methodsOk := gorillaHandlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"})
 
 	fmt.Println("Server starting at http://localhost:8080")

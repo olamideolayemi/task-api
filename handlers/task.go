@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -10,7 +11,9 @@ import (
 	"strings"
 
 	"task-api/db"
+	"task-api/middlewares"
 	"task-api/models"
+	"task-api/utils"
 
 	"github.com/cloudinary/cloudinary-go/v2"
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
@@ -107,17 +110,25 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 		imageURL = uploadResp.SecureURL
 	}
 
+	userID := middlewares.GetUserID(r)
 	var task models.Task
 	err = db.Pool.QueryRow(
 		context.Background(),
-		`INSERT INTO tasks (title, details, done, image_url) VALUES ($1, $2, $3, $4)
-		 RETURNING id, title, details, done, image_url`,
-		title, details, done, imageURL,
-	).Scan(&task.ID, &task.Title, &task.Details, &task.Done, &task.ImageURL)
+		`INSERT INTO tasks (title, details, done, image_url, user_id) VALUES ($1, $2, $3, $4)
+		 RETURNING id, title, details, done, image_url, user_id`,
+		title, details, done, imageURL, userID,
+	).Scan(&task.ID, &task.Title, &task.Details, &task.Done, &task.ImageURL, &task.UserID)
 
 	if err != nil {
 		http.Error(w, "Failed to create task", http.StatusInternalServerError)
 		return
+	}
+
+	var userEmail string
+	err = db.Pool.QueryRow(context.Background(),
+		"SELECT email FROM users WHERE id=$1", task.UserID).Scan(&userEmail)
+	if err == nil {
+		go utils.SendEmail(userEmail, "New Task Created", fmt.Sprintf("Hi, your task '%s' has been created!", task.Title))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -253,8 +264,24 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 
 // Delete task
 func DeleteTask(w http.ResponseWriter, r *http.Request) {
+	userID := middlewares.GetUserID(r)
+	role := middlewares.GetUserRole(r)
+
 	params := mux.Vars(r)
 	id, err := strconv.Atoi(params["id"])
+
+	if role != "admin" {
+		var ownerID int
+		err := db.Pool.QueryRow(context.Background(),
+			"SELECT user_id FROM tasks WHERE id=$1", id,
+		).Scan(&ownerID)
+
+		if err != nil || ownerID != userID {
+			http.Error(w, "Not authorized to delete this task", http.StatusForbidden)
+			return
+		}
+	}
+
 	if err != nil {
 		http.Error(w, "Invalid Task ID", http.StatusBadRequest)
 		return
@@ -263,10 +290,33 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 	commandTag, err := db.Pool.Exec(context.Background(), "DELETE FROM tasks WHERE id=$1", id)
 
 	if err != nil || commandTag.RowsAffected() == 0 {
-		http.Error(w, "Task not found or delete failed", http.StatusNotFound)
+		http.Error(w, "Delete failed", http.StatusNotFound)
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
 
+}
+
+// Get User Tasks
+func GetUserTasks(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	userID, _ := strconv.Atoi(params["id"])
+
+	rows, err := db.Pool.Query(context.Background(), "SELECT id, title, details, done, image_url FROM tasks WHERE user_id=$1", userID)
+	if err != nil {
+		http.Error(w, "Error fetching tasks", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var tasks []models.Task
+	for rows.Next() {
+		var task models.Task
+		rows.Scan(&task.ID, &task.Title, &task.Details, &task.Done, &task.ImageURL)
+		tasks = append(tasks, task)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tasks)
 }

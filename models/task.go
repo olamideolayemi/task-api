@@ -6,4 +6,5 @@ type Task struct {
 	Details  string `json:"details"`
 	Done     bool   `json:"done"`
 	ImageURL string `json:"image_url"`
+	UserID   int    `json:"user_id"`
 }
