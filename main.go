@@ -55,6 +55,13 @@ func main() {
 	r.HandleFunc("/tasks/{id}", middlewares.RequireAuth(handlers.UpdateTask)).Methods("PUT")
 	r.HandleFunc("/tasks/{id}", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.DeleteTask))).Methods("DELETE")
 
+	// Admin handlers
+	r.HandleFunc("/admin/users", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.GetAllUsers))).Methods("GET")
+	r.HandleFunc("/admin/tasks", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.GetAllTasksWithUsers))).Methods("GET")
+	r.HandleFunc("/admin/users/{id}", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.UpdateUserRole))).Methods("PATCH")
+	r.HandleFunc("/admin/users/{id}", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.DeleteUser))).Methods("DELETE")
+	r.HandleFunc("/admin/stats", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.GetAdminStats))).Methods("GET")
+
 	// File upload handler
 	r.HandleFunc("/upload", middlewares.RequireAuth(handlers.UploadImage)).Methods("POST")
 	r.HandleFunc("/upload-cloud", middlewares.RequireAuth(handlers.UploadToCloudinary)).Methods("POST")
