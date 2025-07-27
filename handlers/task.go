@@ -114,8 +114,9 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 	var task models.Task
 	err = db.Pool.QueryRow(
 		context.Background(),
-		`INSERT INTO tasks (title, details, done, image_url, user_id) VALUES ($1, $2, $3, $4)
-		 RETURNING id, title, details, done, image_url, user_id`,
+		`INSERT INTO tasks (title, details, done, image_url, user_id)
+	 VALUES ($1, $2, $3, $4, $5)
+	 RETURNING id, title, details, done, image_url, user_id`,
 		title, details, done, imageURL, userID,
 	).Scan(&task.ID, &task.Title, &task.Details, &task.Done, &task.ImageURL, &task.UserID)
 
