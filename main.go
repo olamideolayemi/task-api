@@ -11,13 +11,14 @@ import (
 	"log"
 	"net/http"
 
-	gorillaHandlers "github.com/gorilla/handlers"
-	"github.com/gorilla/mux"
-	httpSwagger "github.com/swaggo/http-swagger"
 	"task-api/db"
 	_ "task-api/docs"
 	"task-api/handlers"
 	"task-api/middlewares"
+
+	gorillaHandlers "github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +56,7 @@ func main() {
 
 	// File upload handler
 	r.HandleFunc("/upload", middlewares.RequireAuth(handlers.UploadImage)).Methods("POST")
+	r.HandleFunc("/upload-cloud", middlewares.RequireAuth(handlers.UploadToCloudinary)).Methods("POST")
 
 	// CORS config
 	headersOk := gorillaHandlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})

@@ -1,15 +1,3 @@
-// CreateTask godoc
-// @Summary      Create a new task
-// @Description  Adds a task to the database
-// @Tags         tasks
-// @Accept       json
-// @Produce      json
-// @Param        task  body  models.Task  true  "Task to create"
-// @Success      200   {object}  models.Task
-// @Failure      400   {string}  string  "Bad request"
-// @Failure      500   {string}  string  "Internal error"
-// @Router       /tasks [post]
-
 package handlers
 
 import (
@@ -17,13 +5,17 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
 	"task-api/db"
 	"task-api/models"
 
+	"github.com/cloudinary/cloudinary-go/v2"
+	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // var tasks = []models.Task{}
@@ -31,7 +23,7 @@ import (
 
 // Get all tasks
 func GetTasks(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Pool.Query(context.Background(), "SELECT id, title, details, done FROM tasks")
+	rows, err := db.Pool.Query(context.Background(), "SELECT id, title, details, done, image_url FROM tasks")
 	if err != nil {
 		log.Printf("GetTask error: %v", err)
 		http.Error(w, "Failed to fetch tasks", http.StatusInternalServerError)
@@ -42,7 +34,7 @@ func GetTasks(w http.ResponseWriter, r *http.Request) {
 	var tasks []models.Task
 	for rows.Next() {
 		var task models.Task
-		err := rows.Scan(&task.ID, &task.Title, &task.Details, &task.Done)
+		err := rows.Scan(&task.ID, &task.Title, &task.Details, &task.Done, &task.ImageURL)
 		if err != nil {
 			http.Error(w, "Failed to parse task", http.StatusInternalServerError)
 			return
@@ -54,25 +46,74 @@ func GetTasks(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(tasks)
 }
 
-// Create a new task
+// CreateTask godoc
+// @Summary      Create a new task with optional image
+// @Description  Adds a task and uploads image to Cloudinary
+// @Tags         tasks
+// @Accept       mpfd
+// @Produce      json
+// @Param        title formData string true "Task title"
+// @Param        details formData string false "Task details"
+// @Param        done formData boolean false "Is task done?"
+// @Param        image formData file false "Image file to upload"
+// @Success      201 {object} models.Task
+// @Failure      400 {string} string "Bad request"
+// @Failure      500 {string} string "Internal error"
+// @Router       /tasks [post]
 func CreateTask(w http.ResponseWriter, r *http.Request) {
-	var task models.Task
-	if err := json.NewDecoder(r.Body).Decode(&task); err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+	err := r.ParseMultipartForm(20 << 20) // 20MB max
+	if err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
 
-	task.Title = strings.TrimSpace(task.Title)
-	if task.Title == "" {
+	title := strings.TrimSpace(r.FormValue("title"))
+	details := r.FormValue("details")
+	doneStr := r.FormValue("done")
+
+	if title == "" {
 		http.Error(w, "Title is required", http.StatusBadRequest)
 		return
 	}
 
-	err := db.Pool.QueryRow(
+	done := false
+	if strings.ToLower(doneStr) == "true" {
+		done = true
+	}
+
+	var imageURL string
+
+	// Optional image upload
+	file, _, err := r.FormFile("image")
+	if err == nil {
+		defer file.Close()
+
+		cld, err := cloudinary.NewFromParams(
+			os.Getenv("CLOUDINARY_CLOUD_NAME"),
+			os.Getenv("CLOUDINARY_API_KEY"),
+			os.Getenv("CLOUDINARY_API_SECRET"),
+		)
+		if err != nil {
+			http.Error(w, "Cloudinary config failed", http.StatusInternalServerError)
+			return
+		}
+
+		uploadResp, err := cld.Upload.Upload(context.Background(), file, uploader.UploadParams{})
+		if err != nil {
+			http.Error(w, "Failed to upload image", http.StatusInternalServerError)
+			return
+		}
+
+		imageURL = uploadResp.SecureURL
+	}
+
+	var task models.Task
+	err = db.Pool.QueryRow(
 		context.Background(),
-		"INSERT INTO tasks (title, details, done) VALUES ($1, $2, $3) RETURNING id",
-		task.Title, task.Details, task.Done,
-	).Scan(&task.ID)
+		`INSERT INTO tasks (title, details, done, image_url) VALUES ($1, $2, $3, $4)
+		 RETURNING id, title, details, done, image_url`,
+		title, details, done, imageURL,
+	).Scan(&task.ID, &task.Title, &task.Details, &task.Done, &task.ImageURL)
 
 	if err != nil {
 		http.Error(w, "Failed to create task", http.StatusInternalServerError)
@@ -80,6 +121,7 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(task)
 }
 
@@ -95,8 +137,8 @@ func GetTaskByID(w http.ResponseWriter, r *http.Request) {
 	var task models.Task
 	err = db.Pool.QueryRow(
 		context.Background(),
-		"SELECT id, title, details, done FROM tasks WHERE id=$1", id,
-	).Scan(&task.ID, &task.Title, &task.Details, &task.Done)
+		"SELECT id, title, details, done, image_url FROM tasks WHERE id=$1", id,
+	).Scan(&task.ID, &task.Title, &task.Details, &task.Done, &task.ImageURL)
 
 	if err != nil {
 		http.Error(w, "Task not found", http.StatusNotFound)
@@ -107,7 +149,21 @@ func GetTaskByID(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(task)
 }
 
-// Update Task
+// UpdateTask godoc
+// @Summary      Update a task (including image)
+// @Description  Updates task fields and optionally replaces the image
+// @Tags         tasks
+// @Accept       mpfd
+// @Produce      json
+// @Param        id path int true "Task ID"
+// @Param        title formData string true "Task title"
+// @Param        details formData string false "Task details"
+// @Param        done formData boolean false "Done status"
+// @Param        image formData file false "New image file"
+// @Success      200 {object} models.Task
+// @Failure      400 {string} string "Bad request"
+// @Failure      404 {string} string "Task not found"
+// @Router       /tasks/{id} [put]
 func UpdateTask(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	id, err := strconv.Atoi(params["id"])
@@ -116,30 +172,81 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var updatedTask models.Task
-	if err := json.NewDecoder(r.Body).Decode(&updatedTask); err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+	err = r.ParseMultipartForm(20 << 20)
+	if err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
 
-	updatedTask.Title = strings.TrimSpace(updatedTask.Title)
-	if updatedTask.Title == "" {
+	title := strings.TrimSpace(r.FormValue("title"))
+	if title == "" {
 		http.Error(w, "Title is required", http.StatusBadRequest)
 		return
 	}
 
-	commandTag, err := db.Pool.Exec(
-		context.Background(),
-		"UPDATE tasks SET title=$1, details=$2, done=$3 WHERE id=$4",
-		updatedTask.Title, updatedTask.Details, updatedTask.Done, id,
-	)
+	details := r.FormValue("details")
+	doneStr := r.FormValue("done")
+	done := false
+	if strings.ToLower(doneStr) == "true" {
+		done = true
+	}
+
+	imageURL := ""
+
+	// Optional image upload
+	file, _, err := r.FormFile("image")
+	if err == nil {
+		defer file.Close()
+
+		cld, err := cloudinary.NewFromParams(
+			os.Getenv("CLOUDINARY_CLOUD_NAME"),
+			os.Getenv("CLOUDINARY_API_KEY"),
+			os.Getenv("CLOUDINARY_API_SECRET"),
+		)
+		if err != nil {
+			http.Error(w, "Cloudinary config failed", http.StatusInternalServerError)
+			return
+		}
+
+		uploadResp, err := cld.Upload.Upload(context.Background(), file, uploader.UploadParams{})
+		if err != nil {
+			http.Error(w, "Image upload failed", http.StatusInternalServerError)
+			return
+		}
+
+		imageURL = uploadResp.SecureURL
+	}
+
+	var commandTag pgconn.CommandTag
+	if imageURL != "" {
+		commandTag, err = db.Pool.Exec(context.Background(),
+			"UPDATE tasks SET title=$1, details=$2, done=$3, image_url=$4 WHERE id=$5",
+			title, details, done, imageURL, id,
+		)
+	} else {
+		commandTag, err = db.Pool.Exec(context.Background(),
+			"UPDATE tasks SET title=$1, details=$2, done=$3 WHERE id=$4",
+			title, details, done, id,
+		)
+	}
 
 	if err != nil || commandTag.RowsAffected() == 0 {
 		http.Error(w, "Task not found or update failed", http.StatusNotFound)
 		return
 	}
 
-	updatedTask.ID = id
+	// Return updated task
+	var updatedTask models.Task
+	err = db.Pool.QueryRow(
+		context.Background(),
+		"SELECT id, title, details, done, image_url FROM tasks WHERE id=$1", id,
+	).Scan(&updatedTask.ID, &updatedTask.Title, &updatedTask.Details, &updatedTask.Done, &updatedTask.ImageURL)
+
+	if err != nil {
+		http.Error(w, "Failed to fetch updated task", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(updatedTask)
 }
