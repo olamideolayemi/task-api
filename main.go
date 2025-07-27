@@ -25,15 +25,15 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "Welcome to the Task Manager API")
 }
 
-func taskHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		handlers.GetTasks(w, r)
-	} else if r.Method == http.MethodPost {
-		middlewares.RequireAuth(handlers.CreateTask)(w, r)
-	} else {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-	}
-}
+// func taskHandler(w http.ResponseWriter, r *http.Request) {
+// 	if r.Method == http.MethodGet {
+// 		handlers.GetTasks(w, r)
+// 	} else if r.Method == http.MethodPost {
+// 		middlewares.RequireAuth(handlers.CreateTask)(w, r)
+// 	} else {
+// 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+// 	}
+// }
 
 func main() {
 	db.Connect()
@@ -48,9 +48,12 @@ func main() {
 	// auth handlers
 	r.HandleFunc("/login", handlers.Login).Methods("POST")
 	r.HandleFunc("/signup", handlers.Signup).Methods("POST")
+	r.HandleFunc("/refresh", middlewares.RequireAuth(handlers.RefreshToken)).Methods("POST")
 
 	// tasks handlers
-	r.HandleFunc("/tasks", taskHandler)
+	// r.HandleFunc("/tasks", taskHandler)
+	r.HandleFunc("/tasks", middlewares.RequireAuth(handlers.CreateTask)).Methods("POST")
+	r.HandleFunc("/tasks", middlewares.RequireAuth(handlers.GetTasks)).Methods("GET")
 	r.HandleFunc("/tasks/{id}", handlers.GetTaskByID).Methods("GET")
 	r.HandleFunc("/tasks/{id}", middlewares.RequireAuth(handlers.UpdateTask)).Methods("PUT")
 	r.HandleFunc("/tasks/{id}", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.DeleteTask))).Methods("DELETE")
@@ -58,9 +61,11 @@ func main() {
 	// Admin handlers
 	r.HandleFunc("/admin/users", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.GetAllUsers))).Methods("GET")
 	r.HandleFunc("/admin/tasks", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.GetAllTasksWithUsers))).Methods("GET")
+	r.HandleFunc("/admin/users/{id}", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.GetUserByID))).Methods("GET")
 	r.HandleFunc("/admin/users/{id}", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.UpdateUserRole))).Methods("PATCH")
 	r.HandleFunc("/admin/users/{id}", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.DeleteUser))).Methods("DELETE")
 	r.HandleFunc("/admin/stats", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.GetAdminStats))).Methods("GET")
+	r.HandleFunc("/admin/users/{id}/ban", middlewares.RequireAuth(middlewares.RequireAdmin(handlers.ToggleBanUser))).Methods("PATCH")
 
 	// File upload handler
 	r.HandleFunc("/upload", middlewares.RequireAuth(handlers.UploadImage)).Methods("POST")

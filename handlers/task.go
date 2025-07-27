@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+
 	// "strconv"
 	"strings"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -27,7 +29,18 @@ import (
 
 // Get all tasks
 func GetTasks(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Pool.Query(context.Background(), "SELECT id, title, details, done, image_url, user_id FROM tasks")
+	userID := middlewares.GetUserID(r)
+	role := middlewares.GetUserRole(r)
+
+	var rows pgx.Rows
+	var err error
+
+	if role == "admin" {
+		rows, err = db.Pool.Query(context.Background(), "SELECT id, title, details, done, image_url, user_id FROM tasks")
+	} else {
+		rows, err = db.Pool.Query(context.Background(), "SELECT id, title, details, done, image_url, user_id FROM tasks WHERE user_id=$1", userID)
+	}
+
 	if err != nil {
 		log.Printf("GetTask error: %v", err)
 		http.Error(w, "Failed to fetch tasks", http.StatusInternalServerError)
@@ -109,11 +122,8 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 		}
 
 		fmt.Printf("Cloudinary Upload Response: %+v\n", uploadResp)
-
 		imageURL = uploadResp.SecureURL
-
 		fmt.Println("Final image URL:", imageURL)
-
 	}
 
 	userID := middlewares.GetUserID(r)

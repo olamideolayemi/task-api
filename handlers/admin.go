@@ -3,8 +3,8 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"strconv"
 
 	"task-api/db"
 	"task-api/models"
@@ -14,7 +14,25 @@ import (
 )
 
 func GetAllUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Pool.Query(context.Background(), "SELECT id, name, email, role FROM users")
+	query := "SELECT id, name, email, role, banned FROM users WHERE 1=1"
+	args := []interface{}{}
+	argID := 1
+
+	role := r.URL.Query().Get("role")
+	email := r.URL.Query().Get("email")
+
+	if role != "" {
+		query += fmt.Sprintf(" AND role=$%d", argID)
+		args = append(args, role)
+		argID++
+	}
+	if email != "" {
+		query += fmt.Sprintf(" AND email ILIKE $%d", argID)
+		args = append(args, "%"+email+"%")
+		argID++
+	}
+
+	rows, err := db.Pool.Query(context.Background(), query, args...)
 	if err != nil {
 		http.Error(w, "Failed to fetch users", http.StatusInternalServerError)
 		return
@@ -24,7 +42,8 @@ func GetAllUsers(w http.ResponseWriter, r *http.Request) {
 	var users []models.User
 	for rows.Next() {
 		var user models.User
-		if err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.Role); err != nil {
+		err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Banned)
+		if err != nil {
 			continue
 		}
 		users = append(users, user)
@@ -32,6 +51,29 @@ func GetAllUsers(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(users)
+}
+
+func GetUserByID(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	userID, err := uuid.Parse(params["id"])
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	var user models.User
+	err = db.Pool.QueryRow(
+		context.Background(),
+		"SELECT id, name, email, role, banned FROM users WHERE id=$1", userID,
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Banned)
+
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
 }
 
 func GetAllTasksWithUsers(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +117,7 @@ func GetAllTasksWithUsers(w http.ResponseWriter, r *http.Request) {
 
 func UpdateUserRole(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
-	id, err := strconv.Atoi(params["id"])
+	id, err := uuid.Parse(params["id"])
 	if err != nil {
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
@@ -100,7 +142,7 @@ func UpdateUserRole(w http.ResponseWriter, r *http.Request) {
 
 func DeleteUser(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
-	id, err := strconv.Atoi(params["id"])
+	id, err := uuid.Parse(params["id"])
 	if err != nil {
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
@@ -138,4 +180,30 @@ func GetAdminStats(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
+}
+
+func ToggleBanUser(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	userID, err := uuid.Parse(params["id"])
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		Banned bool `json:"banned"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	_, err = db.Pool.Exec(context.Background(), "UPDATE users SET banned=$1 WHERE id=$2", body.Banned, userID)
+	if err != nil {
+		http.Error(w, "Failed to update banned status", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
