@@ -8,3 +8,5 @@ tmp/
 Dockerfile
 .dockerignore
 docker.env
+
+database commands.txt

@@ -91,8 +91,14 @@ func Signup(w http.ResponseWriter, r *http.Request) {
 	).Scan(&user.ID, &user.Role)
 
 	if err != nil {
+		// ✅ Check if it's a unique constraint violation
+		if strings.Contains(err.Error(), "duplicate key value") {
+			http.Error(w, "Email already registered", http.StatusConflict)
+			return
+		}
+
 		log.Printf("Signup error: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "User creation failed", http.StatusInternalServerError)
 		return
 	}
 

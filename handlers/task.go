@@ -7,7 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
+	// "strconv"
 	"strings"
 
 	"task-api/db"
@@ -27,7 +27,7 @@ import (
 
 // Get all tasks
 func GetTasks(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Pool.Query(context.Background(), "SELECT id, title, details, done, image_url FROM tasks")
+	rows, err := db.Pool.Query(context.Background(), "SELECT id, title, details, done, image_url, user_id FROM tasks")
 	if err != nil {
 		log.Printf("GetTask error: %v", err)
 		http.Error(w, "Failed to fetch tasks", http.StatusInternalServerError)
@@ -38,7 +38,7 @@ func GetTasks(w http.ResponseWriter, r *http.Request) {
 	var tasks []models.Task
 	for rows.Next() {
 		var task models.Task
-		err := rows.Scan(&task.ID, &task.Title, &task.Details, &task.Done, &task.ImageURL)
+		err := rows.Scan(&task.ID, &task.Title, &task.Details, &task.Done, &task.ImageURL, &task.UserID)
 		if err != nil {
 			http.Error(w, "Failed to parse task", http.StatusInternalServerError)
 			return
@@ -140,8 +140,8 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 
 // Get Tak by ID
 func GetTaskByID(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	id, err := strconv.Atoi(params["id"])
+	idStr := mux.Vars(r)["id"]
+	id, err := uuid.Parse(idStr)
 	if err != nil {
 		http.Error(w, "Invalid Task ID", http.StatusBadRequest)
 		return
@@ -150,8 +150,8 @@ func GetTaskByID(w http.ResponseWriter, r *http.Request) {
 	var task models.Task
 	err = db.Pool.QueryRow(
 		context.Background(),
-		"SELECT id, title, details, done, image_url FROM tasks WHERE id=$1", id,
-	).Scan(&task.ID, &task.Title, &task.Details, &task.Done, &task.ImageURL)
+		"SELECT id, title, details, done, image_url, user_id FROM tasks WHERE id=$1", id,
+	).Scan(&task.ID, &task.Title, &task.Details, &task.Done, &task.ImageURL, &task.UserID)
 
 	if err != nil {
 		http.Error(w, "Task not found", http.StatusNotFound)
@@ -178,8 +178,8 @@ func GetTaskByID(w http.ResponseWriter, r *http.Request) {
 // @Failure      404 {string} string "Task not found"
 // @Router       /tasks/{id} [put]
 func UpdateTask(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	id, err := strconv.Atoi(params["id"])
+	idStr := mux.Vars(r)["id"]
+	id, err := uuid.Parse(idStr)
 	if err != nil {
 		http.Error(w, "Invalid Task ID", http.StatusBadRequest)
 		return
@@ -269,8 +269,8 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 	userID := middlewares.GetUserID(r)
 	role := middlewares.GetUserRole(r)
 
-	params := mux.Vars(r)
-	id, err := strconv.Atoi(params["id"])
+	idStr := mux.Vars(r)["id"]
+	id, err := uuid.Parse(idStr)
 
 	if role != "admin" {
 		var ownerID uuid.UUID
@@ -302,10 +302,13 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 
 // Get User Tasks
 func GetUserTasks(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	userID, _ := strconv.Atoi(params["id"])
+	// params := mux.Vars(r)
+	// userID, _ := strconv.Atoi(params["id"])
 
-	rows, err := db.Pool.Query(context.Background(), "SELECT id, title, details, done, image_url FROM tasks WHERE user_id=$1", userID)
+	idStr := mux.Vars(r)["id"]
+	userID, _ := uuid.Parse(idStr)
+
+	rows, err := db.Pool.Query(context.Background(), "SELECT id, title, details, done, image_url, user_id FROM tasks WHERE user_id=$1", userID)
 	if err != nil {
 		http.Error(w, "Error fetching tasks", http.StatusInternalServerError)
 		return
@@ -315,7 +318,7 @@ func GetUserTasks(w http.ResponseWriter, r *http.Request) {
 	var tasks []models.Task
 	for rows.Next() {
 		var task models.Task
-		rows.Scan(&task.ID, &task.Title, &task.Details, &task.Done, &task.ImageURL)
+		rows.Scan(&task.ID, &task.Title, &task.Details, &task.Done, &task.ImageURL, &task.UserID)
 		tasks = append(tasks, task)
 	}
 

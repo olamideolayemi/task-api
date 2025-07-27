@@ -14,7 +14,7 @@ import (
 )
 
 func GetAllUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Pool.Query(context.Background(), "SELECT id, email, role FROM users")
+	rows, err := db.Pool.Query(context.Background(), "SELECT id, name, email, role FROM users")
 	if err != nil {
 		http.Error(w, "Failed to fetch users", http.StatusInternalServerError)
 		return
@@ -24,7 +24,7 @@ func GetAllUsers(w http.ResponseWriter, r *http.Request) {
 	var users []models.User
 	for rows.Next() {
 		var user models.User
-		if err := rows.Scan(&user.ID, &user.Email, &user.Role); err != nil {
+		if err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.Role); err != nil {
 			continue
 		}
 		users = append(users, user)
